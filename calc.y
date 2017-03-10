@@ -11,9 +11,9 @@ extern FILE* yyin;
 
 int stack_size = 100;
 int reg[26] = {0};
-int top = -1;
+int top = 0;
 int stack[100];
-int size = 0;
+int size = -1;
 int answer = 0;
 
 int checkreg(char);
@@ -23,6 +23,9 @@ void push_reg(char);
 void push_acc(int);
 void load_reg(char,char);
 void load_acc(char);
+void load_top(char);
+void load_size(char);
+void load_value(char,int);
 
 void yyerror(const char* s);
 %}
@@ -67,6 +70,9 @@ line: T_NEWLINE
     | T_POP T_ACC T_NEWLINE{pop_acc(answer);}
     | T_LOAD T_IDEN T_IDEN T_NEWLINE{load_reg($2,$3);}
     | T_LOAD T_IDEN T_ACC T_NEWLINE{load_acc($2);}
+    | T_LOAD T_IDEN T_TOP T_NEWLINE{load_top($2);}
+    | T_LOAD T_IDEN T_SIZE T_NEWLINE{load_size($2);}
+    | T_LOAD T_IDEN T_INT T_NEWLINE{load_value($2,$3);}
     | T_QUIT T_NEWLINE { printf("bye!\n"); exit(0); }
 ;
 
@@ -105,10 +111,25 @@ mixed_expression: T_FLOAT                 		 { $$ = answer =$1; }
 	  | expression T_DIVIDE register		 { $$ = answer = $1 / (float)$3; }
 ;
 
+register: T_IDEN					{$$ = answer  = checkreg($1);}	
+		| register T_PLUS register		{$$ = answer = $1+$3;}
+		| register T_MINUS register		{$$ = answer = $1-$3;}
+		| register T_MULTIPLY register		{$$ = answer = $1*$3;}
+		| register T_DIVIDE register		{$$ = answer = $1/$3;}
+		| register T_MOD register		{$$ = answer = $1% $3;}
+		| register T_AND register		{$$ = answer = $1&$3;}
+		| register T_OR register		{$$ = answer = $1|$3;}
+		| T_NOT register				{$$ = answer = !$2;}
+		| register T_EXP register      {$$ = answer = pow($1,$3);}
+		| T_LEFT register T_RIGHT		{$$ = answer = $2;}
+		| T_SHOW T_ACC				{$$ = answer;}
+		| T_SHOW T_TOP				{$$ = top;}
+		| T_SHOW T_SIZE				{$$ = size+1;}
+
 expression: T_INT				{ $$ = answer = $1; }
 	  | T_ACC					{ $$ = answer;}
-	  | T_TOP					{ $$ = stack[top];}
-	  | T_SIZE					{ $$ = size;}
+	  | T_TOP					{ $$ = top;}
+	  | T_SIZE					{ $$ = size+1;}
 	  | expression T_PLUS expression	{ $$ = answer = $1 + $3; }
 	  | expression T_MINUS expression	{ $$ = answer = $1 - $3; }
 	  | expression T_MULTIPLY expression	{ $$ = answer = $1 * $3; }
@@ -137,20 +158,6 @@ expression: T_INT				{ $$ = answer = $1; }
 	  | T_LEFT expression T_RIGHT		{ $$ = answer = $2; }
 ;
 
-register: T_IDEN					{$$ = answer  = checkreg($1);}	
-		| register T_PLUS register		{$$ = answer = checkreg($1)+checkreg($3);}
-		| register T_MINUS register		{$$ = answer = checkreg($1)-checkreg($3);}
-		| register T_MULTIPLY register		{$$ = answer = checkreg($1)*checkreg($3);}
-		| register T_DIVIDE register		{$$ = answer = checkreg($1)/checkreg($3);}
-		| register T_MOD register		{$$ = answer = checkreg($1)% checkreg($3);}
-		| register T_AND register		{$$ = answer = checkreg($1)&checkreg($3);}
-		| register T_OR register		{$$ = answer = checkreg($1)|checkreg($3);}
-		| T_NOT register				{$$ = answer = !checkreg($2);}
-		| register T_EXP register      {$$ = answer = pow(checkreg($1),checkreg($3));}
-		| T_LEFT register T_RIGHT		{$$ = answer = $2;}
-		| T_SHOW T_ACC				{$$ = answer;}
-		| T_SHOW T_TOP				{$$ = stack[top];}
-		| T_SHOW T_SIZE				{$$ = size;}
 %%
 
 int main() {
@@ -165,45 +172,44 @@ int main() {
 
 void yyerror(const char* s) {
 	fprintf(stderr, "Parse error: %s\n", s);
-	exit(1);
 }
 int checkreg(char c){
 	return reg['Z'-c];
 }
 void push_reg(char c){
-	if(top==stack_size-1){
+	if(size==stack_size){
 		printf("stack full\n");
 		return;
 	}
 	else{
-		stack[++top] = reg['Z'-c];
-		size++;
+		stack[++size] = reg['Z'-c];
+		top = reg['Z'-c];
 	}
 }
 void push_acc(int n){
-	if(top==stack_size-1){
+	if(size==stack_size-1){
 		printf("stack full\n");
 		return;
 	}
 	else{
-		stack[++top] = n;
-		size++;
+		stack[++size] = n;
+		top = n;
 	}
 }
 void pop_reg(char c1){
-	if(top==-1){
+	if(size==-1){
 		printf("stack empty\n");
 	}else{
-		size--;
-		reg['Z'-c1] = stack[top--];
+		reg['Z'-c1] = stack[size--];
+		top = stack[size];
 	}
 }
 void pop_acc(int n){
-	if(top==-1){
+	if(size==-1){
 		printf("stack empty\n");
 	}else{
-		size--;
-		answer = stack[top--];
+		answer = stack[size--];
+		top = stack[size];
 	}
 }
 void load_reg(char c1,char c2){
@@ -211,4 +217,13 @@ void load_reg(char c1,char c2){
 }
 void load_acc(char c1){
 	reg['Z'-c1] = answer;
+}
+void load_top(char c1){
+	reg['Z'-c1] = top;
+}
+void load_size(char c1){
+	reg['Z'-c1] = size;
+}
+void load_value(char c1,int n1){
+	reg['Z'-c1] = n1;
 }
